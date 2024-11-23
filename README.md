@@ -1,36 +1,81 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Image Metadata Management Tool
 
-## Getting Started
+A Next.js application that allows users to select a folder of images and a CSV file containing metadata, which will then be written into the corresponding image metadata fields.
 
-First, run the development server:
+## Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Direct folder selection for images (PNG, JPG, JPEG)
+- Upload CSV files with metadata information
+- Automatic metadata writing using exiftool
+- Real-time progress and error reporting
+- Modern, responsive UI built with Tailwind CSS
+
+## CSV Format Requirements
+
+The CSV file should contain the following columns in this exact order:
+- `Filename`: The name of the image file (including extension)
+- `Title`: The title of the image
+- `Description`: A brief text description of the image
+- `Keywords`: Comma-separated list of keywords
+
+Example CSV format:
+```csv
+Filename,Title,Description,Keywords
+image1.jpg,"Beautiful Sunset","A sunset photo over the ocean","nature,sunset,beach"
+image2.png,"Forest Path","Forest scene with autumn leaves","forest,trees,nature"
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Prerequisites
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- Node.js 18.x or later
+- ExifTool installed on your system
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Installation
 
-## Learn More
+1. Clone the repository:
+```bash
+git clone [repository-url]
+cd image-metadata-tool
+```
 
-To learn more about Next.js, take a look at the following resources:
+2. Install dependencies:
+```bash
+npm install
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+3. Start the development server:
+```bash
+npm run dev
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+4. Open [http://localhost:3000](http://localhost:3000) in your browser
 
-## Deploy on Vercel
+## Dependencies
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- Next.js
+- React
+- TypeScript
+- Tailwind CSS
+- exiftool-vendored
+- csv-parser
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Usage
+
+1. Click "Choose Files" in the Image Folder section to select your folder containing images
+2. Create a CSV file with the required columns (Filename, Title, Description, Keywords)
+3. Upload the CSV file
+4. Click "Upload and Process" to start processing
+5. Check the results for any errors or success messages
+
+## Error Handling
+
+The application handles various error cases:
+- Missing or incorrect CSV columns
+- Non-matching filenames
+- Invalid image formats
+- Network errors
+- Processing errors
+
+## License
+
+MIT
