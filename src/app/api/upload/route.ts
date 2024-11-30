@@ -1,271 +1,308 @@
-import { NextResponse, NextRequest } from 'next/server';
-import { join, dirname } from 'path';
-import * as csv from 'csv-parse';
-import processMetadataFile from '../../../utils/metadata';
-import * as fs from 'fs/promises';
-import { paths } from '../../../config/paths';
+import { NextRequest, NextResponse } from 'next/server';
+import { parse } from 'csv-parse/sync';
+import { processMetadataFile } from '@/utils/metadata';
+import { promises as fs } from 'fs';
+import path from 'path';
+import JSZip from 'jszip';
 
-// Define expected CSV format based on test.csv
-const CSV_FORMAT = {
-  headers: ['FileName', 'Title', 'Description', 'Keywords'],
-  example: {
-    FileName: 'example.jpg',
-    Title: 'Sample Image Title',
-    Description: 'A sample image description',
-    Keywords: 'keyword1,keyword2,keyword3'
-  }
-};
 
-// Validation rules for each field
-const CSV_VALIDATION = {
-  FileName: {
-    required: true,
-    validate: (value: string) => !!value && /\.(jpg|jpeg|png)$/i.test(value),
-    error: 'must be a .jpg, .jpeg, or .png file',
-    example: CSV_FORMAT.example.FileName
-  },
-  Title: {
-    required: true,
-    validate: (value: string) => !!value && value.length <= 100,
-    error: 'must not be empty and should be less than 100 characters',
-    example: CSV_FORMAT.example.Title
-  },
-  Description: {
-    required: true,
-    validate: (value: string) => !!value && value.length <= 2000,
-    error: 'must not be empty and should be less than 2000 characters',
-    example: CSV_FORMAT.example.Description
-  },
-  Keywords: {
-    required: true,
-    validate: (value: string) => {
-      const keywords = value.split(',').map(k => k.trim()).filter(Boolean);
-      return keywords.length > 0 && keywords.length <= 50;
-    },
-    error: 'must contain at least one keyword and no more than 50 keywords',
-    example: CSV_FORMAT.example.Keywords
-  }
-};
+// Define directories
+const IMAGES_DIR = path.join(process.cwd(), 'public', 'images');
+const PROCESSED_DIR = path.join(process.cwd(), 'public', 'processed');
+const TEMP_DIR = path.join(process.cwd(), 'public', 'temp');
 
-// Generate format guidance message
-function getFormatGuidance(): string {
-  return `
-CSV Format Requirements:
+function normalizeRecords(records: any[], headers: string[]) {
+  const normalizedHeaders = headers.map(h => h.toLowerCase());
+  const expectedHeaders = ['filename', 'title', 'description', 'keywords'];
 
-1. Headers (in exact order):
-   ${CSV_FORMAT.headers.join(', ')}
+  console.log('Validating headers:', headers);
+  console.log('Normalized headers:', normalizedHeaders);
+  console.log('Expected headers:', expectedHeaders);
 
-2. Example Row:
-   FileName: ${CSV_VALIDATION.FileName.example}
-   Title: ${CSV_VALIDATION.Title.example}
-   Description: ${CSV_VALIDATION.Description.example}
-   Keywords: ${CSV_VALIDATION.Keywords.example}
-
-3. Field Requirements:
-   - FileName: ${CSV_VALIDATION.FileName.error}
-   - Title: ${CSV_VALIDATION.Title.error}
-   - Description: ${CSV_VALIDATION.Description.error}
-   - Keywords: ${CSV_VALIDATION.Keywords.error}
-
-Please ensure your CSV follows this format exactly. Keywords should be comma-separated.
-`;
-}
-
-// Find the actual header row in CSV content
-async function findHeaderRow(csvPath: string): Promise<number> {
-  return new Promise((resolve, reject) => {
-    let rowIndex = 0;
-    let headerFound = false;
-
-    createReadStream(csvPath)
-      .pipe(csv.parse({ 
-        skip_empty_lines: true,
-        relax_quotes: true,
-        relax_column_count: true
-      }))
-      .on('data', (row) => {
-        if (!headerFound && row.length >= 4) {
-          const potentialHeaders = row.map((col: string) => col.trim());
-          if (potentialHeaders.join(',') === CSV_FORMAT.headers.join(',')) {
-            headerFound = true;
-            resolve(rowIndex);
-          }
-        }
-        rowIndex++;
-      })
-      .on('end', () => {
-        if (!headerFound) {
-          reject(new Error('Could not find valid header row'));
-        }
-      })
-      .on('error', reject);
-  });
-}
-
-// Validate CSV headers
-function validateCSVHeaders(headers: string[]): { valid: boolean; error?: string } {
-  const expectedHeaders = CSV_FORMAT.headers;
-  
-  if (headers.length !== expectedHeaders.length) {
+  // Check if we have all required headers
+  const missingHeaders = expectedHeaders.filter(h => !normalizedHeaders.includes(h));
+  if (missingHeaders.length > 0) {
     return {
       valid: false,
-      error: `CSV must have exactly ${expectedHeaders.length} columns: ${expectedHeaders.join(', ')}\n\n${getFormatGuidance()}`
+      error: `Missing required headers: ${missingHeaders.join(', ')}`,
+      normalizedRecords: null
     };
   }
 
-  for (let i = 0; i < expectedHeaders.length; i++) {
-    if (headers[i] !== expectedHeaders[i]) {
-      return {
-        valid: false,
-        error: `Invalid column order. Expected: ${expectedHeaders.join(', ')}, Found: ${headers.join(', ')}\n\n${getFormatGuidance()}`
-      };
-    }
-  }
+  // Normalize records
+  const normalizedRecords = records.map(record => {
+    const normalizedRecord: any = {};
+    Object.keys(record).forEach(key => {
+      const normalizedKey = key.toLowerCase();
+      if (expectedHeaders.includes(normalizedKey)) {
+        normalizedRecord[normalizedKey] = record[key];
+      }
+    });
+    return normalizedRecord;
+  });
 
-  return { valid: true };
+  console.log('Normalized records:', normalizedRecords);
+  return { valid: true, error: null, normalizedRecords };
 }
 
-// Validate CSV row data
-function validateCSVRow(row: any, rowIndex: number): { valid: boolean; errors: string[] } {
+interface ValidationResult {
+  valid: boolean;
+  errors: string[];
+  record: any;
+}
+
+function validateCSVRow(record: any, index: number): ValidationResult {
   const errors: string[] = [];
-  
-  for (const [field, rules] of Object.entries(CSV_VALIDATION)) {
-    const value = row[field];
-    
-    if (rules.required && !value) {
-      errors.push(`Row ${rowIndex + 1}: ${field} is required`);
-    } else if (value && !rules.validate(value)) {
-      errors.push(`Row ${rowIndex + 1}: ${field} ${rules.error}`);
+  const validatedRecord = { ...record };
+
+  // Helper function to validate a field
+  function validateField({ value, required = true, maxLength = 0, fieldName = '' }: { 
+    value: string | undefined, 
+    required?: boolean, 
+    maxLength?: number, 
+    fieldName?: string 
+  }) {
+    console.log(`Validating field ${fieldName}:`, { value, required });
+
+    if (required && (!value || value.trim() === '')) {
+      errors.push(`Row ${index + 1}: ${fieldName} is required`);
+      return false;
+    }
+
+    if (maxLength > 0 && value && value.length > maxLength) {
+      errors.push(`Row ${index + 1}: ${fieldName} exceeds maximum length of ${maxLength} characters`);
+      return false;
+    }
+
+    return true;
+  }
+
+  // Validate FileName
+  validateField({
+    value: record.filename,
+    required: true,
+    fieldName: 'FileName'
+  });
+
+  // Validate Title
+  validateField({
+    value: record.title,
+    required: true,
+    maxLength: 100,
+    fieldName: 'Title'
+  });
+
+  // Validate Description
+  validateField({
+    value: record.description,
+    required: true,
+    maxLength: 2000,
+    fieldName: 'Description'
+  });
+
+  // Validate Keywords
+  validateField({
+    value: record.keywords,
+    required: true,
+    fieldName: 'Keywords'
+  });
+
+  // Additional keyword validation
+  if (record.keywords) {
+    const keywords = record.keywords.split(',').map((k: string) => k.trim()).filter(Boolean);
+    if (keywords.length === 0) {
+      errors.push(`Row ${index + 1}: At least one keyword is required`);
+    } else if (keywords.length > 50) {
+      errors.push(`Row ${index + 1}: Maximum 50 keywords allowed`);
     }
   }
-  
-  return { valid: errors.length === 0, errors };
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    record: validatedRecord
+  };
 }
 
 export async function POST(request: NextRequest) {
   try {
+    // Create necessary directories
+    await fs.mkdir(IMAGES_DIR, { recursive: true });
+    await fs.mkdir(PROCESSED_DIR, { recursive: true });
+    await fs.mkdir(TEMP_DIR, { recursive: true });
+
     const formData = await request.formData();
-    const csvFile = formData.get('csvFile') as File;
-    
-    if (!csvFile) {
-      return NextResponse.json(
-        { error: 'No CSV file provided' },
-        { status: 400 }
-      );
-    }
+    const csvFile = formData.get('file') as File;
+    const imageFiles = formData.getAll('images[]') as File[];
 
-    console.log('Received CSV file:', csvFile.name);
-
-    // Save CSV file to temp directory
-    const csvBuffer = Buffer.from(await csvFile.arrayBuffer());
-    await fs.writeFile(paths.csvTemp, csvBuffer);
-
-    // Process metadata
-    const result = await processMetadataFile(paths.csvTemp, paths.imagesDir);
-
-    if (result.errors.length > 0) {
-      return NextResponse.json(
-        { 
-          error: `${result.summary.failed} files failed to process`,
-          details: result.errors,
-          success: result.success,
-          summary: result.summary
-        },
-        { status: 400 }
-      );
-    }
-
-    return NextResponse.json({ 
-      message: `Successfully processed ${result.summary.succeeded} files`,
-      success: result.success,
-      summary: result.summary
+    console.log('Received files:', {
+      csvFile: csvFile?.name,
+      imageFiles: imageFiles.map(f => f.name)
     });
-  } catch (error) {
-    console.error('Error processing request:', error);
-    return NextResponse.json(
-      { 
-        error: 'Failed to process files', 
-        details: error instanceof Error ? error.message : 'Unknown error' 
+
+    if (!csvFile || !imageFiles.length) {
+      console.error('Missing required files:', { csvFile: !!csvFile, imageCount: imageFiles.length });
+      return NextResponse.json(
+        { error: 'Missing required files' },
+        { status: 400 }
+      );
+    }
+
+    // Save uploaded images to public/images directory
+    console.log('Saving images to:', IMAGES_DIR);
+    for (const file of imageFiles) {
+      const buffer = await file.arrayBuffer();
+      const imagePath = path.join(IMAGES_DIR, file.name);
+      await fs.writeFile(imagePath, Buffer.from(buffer));
+      console.log('Saved image:', imagePath);
+    }
+
+    // Create a case-insensitive map of image files
+    const imageFileMap = new Map<string, File>();
+    imageFiles.forEach(file => {
+      imageFileMap.set(file.name.toLowerCase(), file);
+    });
+
+    // Read CSV file content
+    const csvContent = await csvFile.text();
+    console.log('CSV Content:', csvContent);
+
+    // Parse CSV content
+    const records = parse(csvContent, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+      relax_column_count: true,
+      skip_records_with_error: true
+    });
+
+    console.log('Parsed CSV records:', records);
+
+    // Validate and normalize records
+    const { valid, error, normalizedRecords } = normalizeRecords(records, Object.keys(records[0] || {}));
+    if (!valid || !normalizedRecords) {
+      console.error('CSV validation failed:', error);
+      return NextResponse.json(
+        { error: error || 'Invalid CSV format' },
+        { status: 400 }
+      );
+    }
+
+    console.log('Normalized records:', normalizedRecords);
+
+    const results = {
+      processed: [] as { filename: string }[],
+      failed: [] as string[],
+      summary: {
+        total: normalizedRecords.length,
+        succeeded: 0,
+        failed: 0,
       },
+      downloadUrl: '',
+    };
+
+    // Process each record
+    for (const record of normalizedRecords) {
+      console.log('Processing record:', record);
+      
+      const { valid, errors, record: validatedRecord } = validateCSVRow(record, normalizedRecords.indexOf(record));
+      if (!valid || !validatedRecord) {
+        console.error('Record validation failed:', errors);
+        results.failed.push(...errors);
+        results.summary.failed++;
+        continue;
+      }
+
+      console.log('Validated record:', validatedRecord);
+
+      // Get the filename from the record (case-insensitive)
+      const filename = validatedRecord.filename;
+      if (!filename) {
+        const error = `Missing filename in record: ${JSON.stringify(validatedRecord)}`;
+        console.error(error);
+        results.failed.push(error);
+        results.summary.failed++;
+        continue;
+      }
+
+      // Find the corresponding image file
+      const imageFile = imageFileMap.get(filename.toLowerCase());
+      if (!imageFile) {
+        const error = `Image file not found: ${filename}`;
+        console.error(error);
+        console.log('Available files:', Array.from(imageFileMap.keys()));
+        results.failed.push(error);
+        results.summary.failed++;
+        continue;
+      }
+
+      try {
+        console.log('Processing record with metadata:', {
+          filename: filename,
+          title: validatedRecord.title,
+          description: validatedRecord.description,
+          keywords: validatedRecord.keywords
+        });
+        
+        // Format keywords exactly like the test script
+        const keywords = validatedRecord.keywords
+          .split(/[,;]/)  // Split on comma or semicolon
+          .map((k:string )=> k.trim())
+          .filter(Boolean)
+          .join(', ');  // Join with comma and space
+        
+        await processMetadataFile(imageFile, {
+          title: validatedRecord.title.trim(),
+          description: validatedRecord.description.trim(),
+          keywords: keywords
+        });
+
+        results.processed.push({ filename });
+        results.summary.succeeded++;
+      } catch (error) {
+        const errorMessage = `Error processing ${filename}: ${error instanceof Error ? error.message : String(error)}`;
+        console.error(errorMessage);
+        results.failed.push(errorMessage);
+        results.summary.failed++;
+      }
+    }
+
+    // Create ZIP file if there are processed files
+    if (results.processed.length > 0) {
+      const zip = new JSZip();
+      
+      // Create a folder in the ZIP file
+      const processedFolder = zip.folder('processed_images');
+      
+      if (!processedFolder) {
+        throw new Error('Failed to create folder in ZIP');
+      }
+
+      // Add processed files to ZIP folder
+      for (const { filename } of results.processed) {
+        const filePath = path.join(PROCESSED_DIR, filename);
+        const fileContent = await fs.readFile(filePath);
+        processedFolder.file(filename, fileContent);
+      }
+
+      // Generate ZIP file
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const zipFileName = `processed_images_${timestamp}.zip`;
+      const zipPath = path.join(TEMP_DIR, zipFileName);
+      const zipContent = await zip.generateAsync({ type: "nodebuffer" });
+      await fs.writeFile(zipPath, zipContent);
+
+      // Set download URL for the ZIP file
+      results.downloadUrl = `/temp/${zipFileName}`;
+    }
+
+    console.log('Final results:', results);
+    return NextResponse.json(results);
+  } catch (error) {
+    console.error('Upload error:', error);
+    return NextResponse.json(
+      { error: 'Error processing files' },
       { status: 500 }
     );
-  }
-}
-
-// Verify IPTC metadata was written correctly
-async function verifyIPTCMetadata(imagePath: string, metadata: any): Promise<{ success: boolean; errors: string[] }> {
-  try {
-    const readResult = await new ExifTool().read(imagePath);
-    const errors: string[] = [];
-    
-    // Helper function to compare arrays
-    const arraysEqual = (a: string[], b: string[]) => {
-      if (!Array.isArray(a) || !Array.isArray(b)) return false;
-      return a.length === b.length && 
-             a.every((val, index) => val === b[index]);
-    };
-
-    // Verify Title
-    const titleMatches = [
-      readResult['IPTC:ObjectName'] === metadata['IPTC:ObjectName'],
-      readResult['XMP-dc:Title'] === metadata['XMP-dc:Title'],
-      readResult['XMP-photoshop:Headline'] === metadata['XMP-photoshop:Headline']
-    ];
-    
-    if (!titleMatches.every(match => match)) {
-      errors.push('Title was not written correctly to IPTC/XMP metadata');
-    }
-
-    // Verify Description
-    const descriptionMatches = [
-      readResult['IPTC:Caption-Abstract'] === metadata['IPTC:Caption-Abstract'],
-      readResult['XMP-dc:Description'] === metadata['XMP-dc:Description']
-    ];
-    
-    if (!descriptionMatches.every(match => match)) {
-      errors.push('Description was not written correctly to IPTC/XMP metadata');
-    }
-
-    // Verify Keywords
-    const expectedKeywords = metadata['IPTC:Keywords'];
-    const iptcKeywords = Array.isArray(readResult['IPTC:Keywords']) 
-      ? readResult['IPTC:Keywords'] 
-      : [];
-    const xmpKeywords = Array.isArray(readResult['XMP-dc:Subject']) 
-      ? readResult['XMP-dc:Subject'] 
-      : [];
-
-    if (!arraysEqual(iptcKeywords, expectedKeywords) || 
-        !arraysEqual(xmpKeywords, expectedKeywords)) {
-      errors.push('Keywords were not written correctly to IPTC/XMP metadata');
-    }
-
-    // Log the actual metadata for debugging
-    console.log('Written Metadata:', {
-      title: {
-        iptcObjectName: readResult['IPTC:ObjectName'],
-        xmpTitle: readResult['XMP-dc:Title'],
-        xmpHeadline: readResult['XMP-photoshop:Headline']
-      },
-      description: {
-        iptcCaption: readResult['IPTC:Caption-Abstract'],
-        xmpDescription: readResult['XMP-dc:Description']
-      },
-      keywords: {
-        iptcKeywords,
-        xmpKeywords
-      }
-    });
-
-    return {
-      success: errors.length === 0,
-      errors
-    };
-  } catch (error) {
-    console.error('Metadata verification error:', error);
-    return {
-      success: false,
-      errors: ['Failed to verify metadata: ' + (error as Error).message]
-    };
   }
 }

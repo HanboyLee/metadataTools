@@ -1,34 +1,23 @@
-# Image Metadata Management Tool
+# Image Metadata Tool
 
-A Next.js application that allows users to select a folder of images and a CSV file containing metadata, which will then be written into the corresponding image metadata fields.
+A Next.js web application that uses OpenAI's GPT Vision API to analyze images and extract meaningful metadata, which can then be exported to CSV format.
 
 ## Features
 
-- Direct folder selection for images (PNG, JPG, JPEG)
-- Upload CSV files with metadata information
-- Automatic metadata writing using exiftool
-- Real-time progress and error reporting
-- Modern, responsive UI built with Tailwind CSS
-
-## CSV Format Requirements
-
-The CSV file should contain the following columns in this exact order:
-- `Filename`: The name of the image file (including extension)
-- `Title`: The title of the image
-- `Description`: A brief text description of the image
-- `Keywords`: Comma-separated list of keywords
-
-Example CSV format:
-```csv
-Filename,Title,Description,Keywords
-image1.jpg,"Beautiful Sunset","A sunset photo over the ocean","nature,sunset,beach"
-image2.png,"Forest Path","Forest scene with autumn leaves","forest,trees,nature"
-```
+- Multi-image upload support
+- AI-powered image analysis using OpenAI GPT Vision API
+- Automatic metadata generation:
+  - Title (up to 70 characters)
+  - Description (up to 200 characters)
+  - Keywords (comma-separated)
+- Real-time analysis progress tracking
+- CSV export functionality
+- Modern, responsive UI built with Material-UI
 
 ## Prerequisites
 
 - Node.js 18.x or later
-- ExifTool installed on your system
+- OpenAI API key
 
 ## Installation
 
@@ -43,39 +32,72 @@ cd image-metadata-tool
 npm install
 ```
 
-3. Start the development server:
+3. Create a `.env.local` file and add your OpenAI API key:
+```env
+OPENAI_API_KEY=your_api_key_here
+```
+
+4. Start the development server:
 ```bash
 npm run dev
 ```
 
-4. Open [http://localhost:3000](http://localhost:3000) in your browser
+5. Open [http://localhost:3000](http://localhost:3000) in your browser
 
 ## Dependencies
 
-- Next.js
-- React
+- Next.js 15.0.3
+- React 19.0.0-rc
+- Material-UI (latest)
+- OpenAI SDK (latest)
 - TypeScript
-- Tailwind CSS
-- exiftool-vendored
-- csv-parser
+- ESLint
 
 ## Usage
 
-1. Click "Choose Files" in the Image Folder section to select your folder containing images
-2. Create a CSV file with the required columns (Filename, Title, Description, Keywords)
-3. Upload the CSV file
-4. Click "Upload and Process" to start processing
-5. Check the results for any errors or success messages
+1. Enter your OpenAI API key (if not configured in .env.local)
+2. Upload one or multiple images (supported formats: JPEG, PNG)
+3. Wait for the AI analysis to complete
+4. Review the generated metadata for each image
+5. Export results to CSV format
+
+## CSV Export Format
+
+The exported CSV file contains the following columns:
+- Filename: Original image filename
+- Title: AI-generated title
+- Description: AI-generated description
+- Keywords: AI-generated keywords (comma-separated)
 
 ## Error Handling
 
-The application handles various error cases:
-- Missing or incorrect CSV columns
-- Non-matching filenames
-- Invalid image formats
-- Network errors
-- Processing errors
+The application handles various scenarios:
+- API authentication errors
+- Network connectivity issues
+- Invalid file formats
+- Processing failures
+- Rate limiting
+
+## Documentation
+
+- [Requirements Specification (English)](./REQUIREMENTS.md)
+- [需求规格说明书 (中文)](./REQUIREMENTS_CN.md)
+
+## Security Considerations
+
+- API keys are stored temporarily in session only
+- Client-side image processing
+- No permanent data storage
+- Secure data transmission
 
 ## License
 
 MIT
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a new Pull Request

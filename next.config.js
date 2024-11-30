@@ -1,14 +1,17 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    serverActions: true,
-  },
-  api: {
-    bodyParser: false, // Disable the default body parser for the upload endpoint
+    serverActions: {
+      bodySizeLimit: '50mb'
+    }
   },
   webpack: (config) => {
     config.externals = [...config.externals, 'exiftool-vendored'];
     return config;
+  },
+  // Server configuration
+  server: {
+    host: '0.0.0.0'
   }
 }
 
