@@ -53,6 +53,9 @@ next-env.d.ts
 *.tiff
 *.webp
 
+# build output
+/dist/
+
 # Processed files directory
 /processed/
 /public/processed/
