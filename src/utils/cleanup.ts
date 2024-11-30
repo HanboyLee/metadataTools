@@ -18,7 +18,7 @@ interface FileMetadata {
 
 let isCleanupRunning = false;
 let fileUsageMap = new Map<string, number>();
-let cronJob: cron.ScheduledTask | null = null;
+let cronJob: ReturnType<typeof cron.schedule> | null = null;
 let isInitialized = false;
 let cachedDirs: Awaited<ReturnType<typeof getDirectories>> | null = null;
 

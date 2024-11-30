@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { cleanupService } from '@/utils/cleanup';
+import { initialize } from '@/utils/cleanup';
 
 // 初始化清理服務
-await cleanupService.initialize();
+await initialize();
 
 export async function GET() {
   return NextResponse.json({ message: 'Cleanup service initialized' });

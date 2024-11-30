@@ -105,11 +105,13 @@ export default function MetadataManagement() {
         body: formData,
       });
 
-      const result = await response.json();
-
       if (!response.ok) {
-        throw new Error(result.error || "處理過程中發生錯誤");
+        const errorData = await response.text();
+        console.error('Upload error:', errorData);
+        throw new Error(errorData || "處理過程中發生錯誤");
       }
+
+      const result = await response.json();
 
       setState((prev) => ({
         ...prev,

@@ -20,8 +20,8 @@ interface MetadataTags extends Tags {
   ObjectName?: string;
   Caption?: string;
   Keywords?: string[];
-  'XMP-dc:Title'?: string;
-  'XMP-dc:Description'?: string;
+  'XMP-dc:Title'?: any;
+  'XMP-dc:Description'?: any;
   'XMP-dc:Subject'?: string[];
   'EXIF:DocumentName'?: string;
   'EXIF:ImageDescription'?: string;
