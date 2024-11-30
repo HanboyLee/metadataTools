@@ -47,6 +47,12 @@ next-env.d.ts
 /public/temp/*.zip
 /public/temp/processed_images_*.zip
 
+# Image directories
+public/temp/
+public/processed/
+public/images/
+public/uploads/
+
 # Image files
 *.jpg
 *.jpeg
@@ -55,9 +61,6 @@ next-env.d.ts
 *.bmp
 *.tiff
 *.webp
-/public/images/
-/public/processed/
-/WriteDurectiry/
 
 # Build output
 /.next/
