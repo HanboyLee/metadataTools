@@ -4,8 +4,24 @@
   "buildCommand": "next build",
   "outputDirectory": ".next",
   "env": {
-    "UPLOAD_DIR": "./public/uploads",
-    "PROCESSED_DIR": "./public/processed",
+    "UPLOAD_DIR": "/tmp/uploads",
+    "PROCESSED_DIR": "/tmp/processed",
     "NODE_ENV": "production"
-  }
+  },
+  "routes": [
+    {
+      "src": "/api/download/(.*)",
+      "dest": "/api/download/$1",
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate"
+      }
+    },
+    {
+      "src": "/processed/(.*)",
+      "dest": "/processed/$1",
+      "headers": {
+        "Cache-Control": "public, max-age=0, must-revalidate"
+      }
+    }
+  ]
 }
