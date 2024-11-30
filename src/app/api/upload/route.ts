@@ -4,12 +4,8 @@ import { processMetadataFile } from '@/utils/metadata';
 import { promises as fs } from 'fs';
 import path from 'path';
 import JSZip from 'jszip';
-
-
-// Define directories
-const IMAGES_DIR = path.join(process.cwd(), 'public', 'images');
-const PROCESSED_DIR = path.join(process.cwd(), 'public', 'processed');
-const TEMP_DIR = path.join(process.cwd(), 'public', 'temp');
+import { getDirectories } from '@/utils/directories';
+import { registerFile } from '@/utils/cleanup';
 
 function normalizeRecords(records: any[], headers: string[]) {
   const normalizedHeaders = headers.map(h => h.toLowerCase());
@@ -126,10 +122,11 @@ function validateCSVRow(record: any, index: number): ValidationResult {
 
 export async function POST(request: NextRequest) {
   try {
-    // Create necessary directories
-    await fs.mkdir(IMAGES_DIR, { recursive: true });
-    await fs.mkdir(PROCESSED_DIR, { recursive: true });
-    await fs.mkdir(TEMP_DIR, { recursive: true });
+    // Ensure directories exist
+    await getDirectories();
+
+    // Get directory paths
+    const dirs = await getDirectories();
 
     const formData = await request.formData();
     const csvFile = formData.get('file') as File;
@@ -149,10 +146,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Save uploaded images to public/images directory
-    console.log('Saving images to:', IMAGES_DIR);
+    console.log('Saving images to:', dirs.IMAGES_DIR);
     for (const file of imageFiles) {
       const buffer = await file.arrayBuffer();
-      const imagePath = path.join(IMAGES_DIR, file.name);
+      const imagePath = path.join(dirs.IMAGES_DIR, file.name);
+      await registerFile(imagePath);
       await fs.writeFile(imagePath, Buffer.from(buffer));
       console.log('Saved image:', imagePath);
     }
@@ -160,7 +158,9 @@ export async function POST(request: NextRequest) {
     // Create a case-insensitive map of image files
     const imageFileMap = new Map<string, File>();
     imageFiles.forEach(file => {
-      imageFileMap.set(file.name.toLowerCase(), file);
+      const lowerName = file.name.toLowerCase().trim();
+      console.log(`Adding file to map: ${file.name} -> ${lowerName}`);
+      imageFileMap.set(lowerName, file);
     });
 
     // Read CSV file content
@@ -190,15 +190,16 @@ export async function POST(request: NextRequest) {
 
     console.log('Normalized records:', normalizedRecords);
 
+    // Initialize results object
     const results = {
       processed: [] as { filename: string }[],
       failed: [] as string[],
       summary: {
         total: normalizedRecords.length,
         succeeded: 0,
-        failed: 0,
+        failed: 0
       },
-      downloadUrl: '',
+      downloadUrl: ''
     };
 
     // Process each record
@@ -216,21 +217,16 @@ export async function POST(request: NextRequest) {
       console.log('Validated record:', validatedRecord);
 
       // Get the filename from the record (case-insensitive)
-      const filename = validatedRecord.filename;
-      if (!filename) {
-        const error = `Missing filename in record: ${JSON.stringify(validatedRecord)}`;
-        console.error(error);
-        results.failed.push(error);
-        results.summary.failed++;
-        continue;
-      }
+      const filename = validatedRecord.filename.trim();
+      const lowerFilename = filename.toLowerCase().trim();
+      console.log(`Looking for file: ${filename} (${lowerFilename})`);
+      console.log('Available files:', Array.from(imageFileMap.keys()));
 
       // Find the corresponding image file
-      const imageFile = imageFileMap.get(filename.toLowerCase());
+      const imageFile = imageFileMap.get(lowerFilename);
       if (!imageFile) {
-        const error = `Image file not found: ${filename}`;
+        const error = `Image file not found: ${filename}. Available files: ${Array.from(imageFileMap.keys()).join(', ')}`;
         console.error(error);
-        console.log('Available files:', Array.from(imageFileMap.keys()));
         results.failed.push(error);
         results.summary.failed++;
         continue;
@@ -257,6 +253,14 @@ export async function POST(request: NextRequest) {
           keywords: keywords
         });
 
+        // Copy the processed image to processed directory
+        const sourceImagePath = path.join(dirs.IMAGES_DIR, filename);
+        const processedFilePath = path.join(dirs.PROCESSED_DIR, filename);
+        
+        // Copy file from IMAGES_DIR to PROCESSED_DIR
+        await fs.copyFile(sourceImagePath, processedFilePath);
+        
+        await registerFile(processedFilePath);
         results.processed.push({ filename });
         results.summary.succeeded++;
       } catch (error) {
@@ -280,24 +284,34 @@ export async function POST(request: NextRequest) {
 
       // Add processed files to ZIP folder
       for (const { filename } of results.processed) {
-        const filePath = path.join(PROCESSED_DIR, filename);
+        const filePath = path.join(dirs.PROCESSED_DIR, filename);
         const fileContent = await fs.readFile(filePath);
         processedFolder.file(filename, fileContent);
       }
 
-      // Generate ZIP file
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const zipFileName = `processed_images_${timestamp}.zip`;
-      const zipPath = path.join(TEMP_DIR, zipFileName);
-      const zipContent = await zip.generateAsync({ type: "nodebuffer" });
+      // Generate ZIP file in public/temp directory
+      const zipFileName = `processed_images_${new Date().toISOString().replace(/[:.]/g, '-')}.zip`;
+      const zipPath = path.join(dirs.TEMP_DIR, zipFileName);
+      await registerFile(zipPath);
+      
+      // Generate ZIP content and save
+      const zipContent = await zip.generateAsync({ type: 'nodebuffer' });
       await fs.writeFile(zipPath, zipContent);
 
-      // Set download URL for the ZIP file
-      results.downloadUrl = `/temp/${zipFileName}`;
+      // Set download URL (now pointing to public/temp)
+      results.downloadUrl = `/temp/${encodeURIComponent(zipFileName)}`;
     }
 
-    console.log('Final results:', results);
-    return NextResponse.json(results);
+    return NextResponse.json({
+      ...results,
+      success: true,
+      message: `處理完成：${results.summary.succeeded} 成功，${results.summary.failed} 失敗`,
+      successDetails: results.processed.map(({ filename }) => ({
+        filename,
+        path: `/processed/${filename}`
+      })),
+      failureDetails: results.failed
+    });
   } catch (error) {
     console.error('Upload error:', error);
     return NextResponse.json(

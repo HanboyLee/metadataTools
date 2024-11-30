@@ -20,8 +20,8 @@ interface MetadataTags extends Tags {
   ObjectName?: string;
   Caption?: string;
   Keywords?: string[];
-  'XMP-dc:Title'?: XMPLangAlt;
-  'XMP-dc:Description'?: XMPLangAlt;
+  'XMP-dc:Title'?: string;
+  'XMP-dc:Description'?: string;
   'XMP-dc:Subject'?: string[];
   'EXIF:DocumentName'?: string;
   'EXIF:ImageDescription'?: string;
@@ -70,8 +70,8 @@ export async function processMetadataFile(file: File, metadata: MetadataInput): 
       Keywords: keywords,
       
       // XMP Dublin Core
-      'XMP-dc:Title': { 'x-default': metadata.title },
-      'XMP-dc:Description': { 'x-default': metadata.description },
+      'XMP-dc:Title': metadata.title,
+      'XMP-dc:Description': metadata.description,
       'XMP-dc:Subject': keywords,
 
       // EXIF
@@ -87,7 +87,9 @@ export async function processMetadataFile(file: File, metadata: MetadataInput): 
       '-overwrite_original',
       '-codedcharacterset=utf8',
       '-charset', 
-      'iptc=utf8'
+      'iptc=utf8',
+      '-P',  // Preserve file modification date/time
+      '-m'   // Ignore minor errors
     ]);
 
     // Verify metadata

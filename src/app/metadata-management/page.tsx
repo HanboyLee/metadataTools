@@ -9,7 +9,22 @@ import {
   Paper,
   Grid,
   Stack,
+  Alert,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Card,
+  CardContent,
+  Divider,
+  CircularProgress,
 } from "@mui/material";
+import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import InfoIcon from "@mui/icons-material/Info";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import ErrorIcon from "@mui/icons-material/Error";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import DownloadIcon from "@mui/icons-material/Download";
 import { CsvRequirements } from "./components/CsvRequirements";
 import { FileUpload } from "./components/FileUpload";
 
@@ -19,6 +34,7 @@ const initialState = {
   processing: false,
   error: null as any,
   results: null as React.ReactElement | null,
+  uploadResult: null as any,
 };
 
 export default function MetadataManagement() {
@@ -71,33 +87,18 @@ export default function MetadataManagement() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!state.csvFile || !state.selectedFiles.length) {
-      return;
-    }
-
-    setState((prev) => ({
-      ...prev,
-      processing: true,
-      error: null,
-      results: null,
-    }));
+    if (!state.csvFile || !state.selectedFiles.length) return;
 
     try {
-      // Get all image files from the selected files
-      const imageFiles = await getImageFiles();
-      if (imageFiles.length === 0) {
-        throw new Error("No image files found in the selected files");
-      }
+      setState((prev) => ({ ...prev, processing: true, error: null }));
 
       const formData = new FormData();
       formData.append("file", state.csvFile);
-
-      // Add all image files to the form data
-      for (const { name, file } of imageFiles) {
-        formData.append("images[]", file, name.toLowerCase()); // Use lowercase name
-      }
+      state.selectedFiles.forEach((file) => {
+        formData.append("images[]", file);
+      });
 
       const response = await fetch("/api/upload", {
         method: "POST",
@@ -105,209 +106,144 @@ export default function MetadataManagement() {
       });
 
       const result = await response.json();
-      console.log("API Response:", {
-        ok: response.ok,
-        status: response.status,
-        result,
-      });
 
       if (!response.ok) {
-        setState((prev) => ({
-          ...prev,
-          error:
-            result.details && Array.isArray(result.details)
-              ? `${result.error}\n${result.details.join("\n")}`
-              : result.error ||
-                "An error occurred while processing the request",
-          results:
-            result.processed && result.processed.length > 0 ? (
-              <Box sx={{ mt: 2 }}>
-                <Typography color="success.main" sx={{ fontWeight: "medium" }}>
-                  Partially processed files:
-                </Typography>
-                <Box
-                  component="ul"
-                  sx={{ mt: 1, listStyleType: "disc", pl: 4 }}
-                >
-                  {result.processed.map(
-                    (
-                      item: { filename: string; downloadUrl: string },
-                      index: number
-                    ) => (
-                      <li key={index}>
-                        <Typography variant="body2">
-                          {item.filename} -{" "}
-                          <a
-                            href={item.downloadUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            Download
-                          </a>
-                        </Typography>
-                      </li>
-                    )
-                  )}
-                </Box>
-              </Box>
-            ) : null,
-        }));
-      } else if (result.processed && result.processed.length > 0) {
-        setState((prev) => ({
-          ...prev,
-          results: (
-            <Box sx={{ mt: 2 }}>
-              <Typography color="success.main" sx={{ fontWeight: "medium" }}>
-                Successfully processed files:
-              </Typography>
-              {result.summary && (
-                <Typography color="success.main" variant="body2" sx={{ mt: 1 }}>
-                  Total: {result.summary.total}, Succeeded:{" "}
-                  {result.summary.succeeded}, Failed: {result.summary.failed}
-                </Typography>
-              )}
-              {result.downloadUrl && (
-                <Button
-                  variant="contained"
-                  color="primary"
-                  onClick={async () => {
-                    try {
-                      // Trigger cleanup
-                      const response = await fetch("/api/download", {
-                        method: "POST",
-                        headers: {
-                          "Content-Type": "application/json",
-                        },
-                        body: JSON.stringify({ zipPath: result.downloadUrl }),
-                      });
-
-                      if (!response.ok) {
-                        throw new Error("Failed to initiate cleanup");
-                      }
-
-                      // Start download after cleanup is scheduled
-                      window.location.href = result.downloadUrl;
-                    } catch (error) {
-                      console.error("Error during download:", error);
-                    }
-                  }}
-                  sx={{ mt: 2, mb: 2 }}
-                >
-                  Download All Processed Images (ZIP)
-                </Button>
-              )}
-              <Box component="ul" sx={{ mt: 1, listStyleType: "disc", pl: 4 }}>
-                {result.processed.map(
-                  (item: { filename: string }, index: number) => (
-                    <li key={index}>
-                      <Typography variant="body2">{item.filename}</Typography>
-                    </li>
-                  )
-                )}
-              </Box>
-              {result.failed && result.failed.length > 0 && (
-                <>
-                  <Typography
-                    color="error.main"
-                    sx={{ fontWeight: "medium", mt: 2 }}
-                  >
-                    Failed files:
-                  </Typography>
-                  <Box
-                    component="ul"
-                    sx={{ mt: 1, listStyleType: "disc", pl: 4 }}
-                  >
-                    {result.failed.map((error: string, index: number) => (
-                      <li key={index}>
-                        <Typography variant="body2" color="error">
-                          {error}
-                        </Typography>
-                      </li>
-                    ))}
-                  </Box>
-                </>
-              )}
-            </Box>
-          ),
-        }));
-      } else {
-        setState((prev) => ({
-          ...prev,
-          error: "No files were processed successfully.",
-        }));
+        throw new Error(result.error || "處理過程中發生錯誤");
       }
-    } catch (error) {
-      console.error("Error processing files:", error);
+
       setState((prev) => ({
         ...prev,
-        error:
-          error instanceof Error
-            ? error.message
-            : "An error occurred while processing the files",
+        uploadResult: result,
+        processing: false,
       }));
-    } finally {
-      setState((prev) => ({ ...prev, processing: false }));
+
+    } catch (error) {
+      setState((prev) => ({
+        ...prev,
+        error: error instanceof Error ? error.message : "未知錯誤",
+        processing: false,
+      }));
     }
   };
 
-  const handleReset = () => {
-    setState(initialState);
-    // Reset the file input by clearing its value
-    const fileInput = document.querySelector(
-      'input[type="file"]'
-    ) as HTMLInputElement;
-    if (fileInput) {
-      fileInput.value = "";
+  const handleReset = async () => {
+    try {
+      setState({ ...state, processing: true });
+
+      // 調用重置 API
+      const response = await fetch("/api/reset", {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to reset directories");
+      }
+
+      // 重置表單狀態
+      setState({
+        csvFile: null,
+        selectedFiles: [],
+        processing: false,
+        error: null,
+        results: null,
+        uploadResult: null,
+      });
+
+      // 清除文件輸入
+      const fileInput = document.querySelector("input[type='file']") as HTMLInputElement;
+      if (fileInput) {
+        fileInput.value = "";
+      }
+    } catch (error) {
+      console.error("Reset error:", error);
+      setState({
+        ...state,
+        processing: false,
+        error: "Failed to reset. Please try again.",
+      });
     }
   };
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <Typography variant="h4" component="h1" gutterBottom>
-        Image Metadata Management Tool
+     胡豆豆的專屬吃飯工具
       </Typography>
 
       <Paper component="form" onSubmit={handleSubmit} sx={{ p: 3, mt: 3 }}>
         <Grid container spacing={3}>
           <Grid item xs={12}>
             <Typography variant="h6" gutterBottom>
-              Configuration
+              檔案上傳
             </Typography>
           </Grid>
 
           <Grid item xs={12} md={6}>
-            <FileUpload
-              csvFile={state.csvFile}
-              onFileChange={handleCsvChange}
-            />
-          </Grid>
-
-          <Grid item xs={12}>
-            <Typography variant="h6" gutterBottom>
-              Upload Files
-            </Typography>
+            <Card variant="outlined" sx={{ height: "100%" }}>
+              <CardContent>
+                <Typography variant="subtitle1" gutterBottom sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                  <InfoIcon color="primary" fontSize="small" />
+                  CSV 檔案格式說明
+                </Typography>
+                <CsvRequirements />
+              </CardContent>
+            </Card>
           </Grid>
 
           <Grid item xs={12} md={6}>
-            <input
-              type="file"
-              multiple
-              onChange={(e) => handleFileSelect(e.target.files!)}
-            />
+            <Card variant="outlined" sx={{ height: "100%" }}>
+              <CardContent>
+                <Typography variant="subtitle1" gutterBottom>
+                  上傳檔案
+                </Typography>
+                <Box sx={{ mb: 3 }}>
+                  <FileUpload csvFile={state.csvFile} onFileChange={handleCsvChange} />
+                </Box>
+                <Box
+                  sx={{
+                    border: "2px dashed",
+                    borderColor: "primary.light",
+                    borderRadius: 1,
+                    p: 3,
+                    textAlign: "center",
+                  }}
+                >
+                  <input
+                    type="file"
+                    multiple
+                    onChange={(e) => handleFileSelect(e.target.files!)}
+                    style={{ display: "none" }}
+                    id="image-upload"
+                  />
+                  <label htmlFor="image-upload">
+                    <Button
+                      component="span"
+                      variant="contained"
+                      startIcon={<CloudUploadIcon />}
+                      sx={{ mb: 2 }}
+                    >
+                      選擇圖片
+                    </Button>
+                  </label>
+                  {state.selectedFiles.length > 0 && (
+                    <Typography variant="body2" color="text.secondary">
+                      已選擇 {state.selectedFiles.length} 個檔案
+                    </Typography>
+                  )}
+                </Box>
+              </CardContent>
+            </Card>
           </Grid>
 
           <Grid item xs={12}>
-            <CsvRequirements />
-          </Grid>
-
-          <Grid item xs={12}>
-            <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
+            <Box sx={{ display: "flex", gap: 2, justifyContent: "center", mt: 2 }}>
               <Button
                 type="submit"
                 variant="contained"
-                disabled={state.processing}
+                disabled={state.processing || !state.csvFile || !state.selectedFiles.length}
+                startIcon={state.processing ? <CircularProgress size={20} /> : <CloudUploadIcon />}
               >
-                {state.processing ? "Processing..." : "Upload and Process"}
+                {state.processing ? "處理中..." : "開始處理"}
               </Button>
               <Button
                 type="button"
@@ -315,24 +251,101 @@ export default function MetadataManagement() {
                 onClick={handleReset}
                 disabled={state.processing}
               >
-                Reset
+                重置
               </Button>
-            </Stack>
+            </Box>
           </Grid>
         </Grid>
       </Paper>
 
       {state.error && (
-        <Paper sx={{ mt: 3, p: 2, bgcolor: "error.light" }}>
-          <Typography color="error.dark" sx={{ whiteSpace: "pre-line" }}>
-            {state.error}
-          </Typography>
-        </Paper>
+        <Alert severity="error" sx={{ mt: 3 }}>
+          {state.error}
+        </Alert>
       )}
 
-      {state.results && (
-        <Paper sx={{ mt: 3, p: 2, bgcolor: "success.light" }}>
-          {state.results}
+      {state.uploadResult && (
+        <Paper elevation={3} sx={{ mt: 4, overflow: 'hidden' }}>
+          <Box
+            sx={{
+              p: 2,
+              bgcolor: state.uploadResult.success ? 'success.light' : 'error.light',
+              color: 'white'
+            }}
+          >
+            <Typography variant="h6">
+              {state.uploadResult.success ? '處理完成' : '處理失敗'}
+            </Typography>
+            <Typography variant="body2" sx={{ opacity: 0.9 }}>
+              {state.uploadResult.message}
+            </Typography>
+          </Box>
+
+          <Box sx={{ p: 3 }}>
+            {state.uploadResult.successDetails?.length > 0 && (
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <CheckCircleIcon color="success" />
+                  成功處理的文件
+                </Typography>
+                <List>
+                  {state.uploadResult.successDetails.map((item: { filename: string; path: string }, index: number) => (
+                    <ListItem key={index} divider>
+                      <ListItemText primary={item.filename} />
+                      <Button
+                        href={item.path}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        startIcon={<VisibilityIcon />}
+                        size="small"
+                        variant="outlined"
+                        color="primary"
+                      >
+                        查看
+                      </Button>
+                    </ListItem>
+                  ))}
+                </List>
+              </Box>
+            )}
+
+            {state.uploadResult.failureDetails?.length > 0 && (
+              <Box sx={{ mb: 4 }}>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <ErrorIcon color="error" />
+                  處理失敗的文件
+                </Typography>
+                <List>
+                  {state.uploadResult.failureDetails.map((error: string, index: number) => (
+                    <ListItem key={index} divider>
+                      <ListItemIcon>
+                        <ErrorIcon color="error" fontSize="small" />
+                      </ListItemIcon>
+                      <ListItemText 
+                        primary={error} 
+                        primaryTypographyProps={{ color: 'error' }}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              </Box>
+            )}
+
+            {state.uploadResult.success && state.uploadResult.downloadUrl && (
+              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+                <Button
+                  href={state.uploadResult.downloadUrl}
+                  download="processed_images.zip"
+                  variant="contained"
+                  color="primary"
+                  startIcon={<DownloadIcon />}
+                  size="large"
+                >
+                  下載處理後的圖片
+                </Button>
+              </Box>
+            )}
+          </Box>
         </Paper>
       )}
     </Container>
