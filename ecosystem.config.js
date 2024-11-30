@@ -1,6 +1,6 @@
 module.exports = {
   apps: [{
-    name: 'image-metadata-tool',
+    name: 'metadata-tool',
     script: 'npm',
     args: 'start',
     env: {
