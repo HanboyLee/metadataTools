@@ -1,6 +1,12 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import { exiftool, Tags, XMPLangAlt } from 'exiftool-vendored';
+import { exiftool, Tags } from 'exiftool-vendored';
+
+// Define XMPLangAlt type
+type XMPLangAlt = {
+  'x-default': string;
+  [key: string]: string;
+};
 
 interface MetadataInput {
   title: string;
@@ -17,6 +23,8 @@ interface MetadataTags extends Tags {
   'XMP-dc:Title'?: XMPLangAlt;
   'XMP-dc:Description'?: XMPLangAlt;
   'XMP-dc:Subject'?: string[];
+  'EXIF:DocumentName'?: string;
+  'EXIF:ImageDescription'?: string;
 }
 
 export async function processMetadataFile(file: File, metadata: MetadataInput): Promise<string> {
@@ -62,8 +70,8 @@ export async function processMetadataFile(file: File, metadata: MetadataInput): 
       Keywords: keywords,
       
       // XMP Dublin Core
-      'XMP-dc:Title': [{ lang: 'x-default', text: metadata.title }],
-      'XMP-dc:Description': [{ lang: 'x-default', text: metadata.description }],
+      'XMP-dc:Title': { 'x-default': metadata.title },
+      'XMP-dc:Description': { 'x-default': metadata.description },
       'XMP-dc:Subject': keywords,
 
       // EXIF
@@ -84,7 +92,7 @@ export async function processMetadataFile(file: File, metadata: MetadataInput): 
 
     // Verify metadata
     console.log('Verifying metadata...');
-    const verifyData = await exiftool.read(processedImagePath);
+    const verifyData = await exiftool.read(processedImagePath) as MetadataTags;
     console.log('Verification result:', JSON.stringify(verifyData, null, 2));
 
     // Log specific fields for verification

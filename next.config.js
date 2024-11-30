@@ -8,10 +8,6 @@ const nextConfig = {
   webpack: (config) => {
     config.externals = [...config.externals, 'exiftool-vendored'];
     return config;
-  },
-  // Server configuration
-  server: {
-    host: '0.0.0.0'
   }
 }
 

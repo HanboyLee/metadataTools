@@ -8,7 +8,7 @@ export interface ImageAnalysisState {
   selectedFiles: File[];
   analyzing: boolean;
   results: Record<string, AnalysisResult | null>;
-  errors: Record<string, string>;
+  errors: Record<string, string | undefined>;
   apiKey: string;
 }
 

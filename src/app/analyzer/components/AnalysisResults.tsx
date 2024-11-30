@@ -5,7 +5,7 @@ import { AnalysisResult } from '../types';
 
 interface AnalysisResultsProps {
   results: Record<string, AnalysisResult | null>;
-  errors: Record<string, string>;
+  errors: Record<string, string | undefined>;
 }
 
 export function AnalysisResults({ results, errors }: AnalysisResultsProps) {
