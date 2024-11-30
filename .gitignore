@@ -19,6 +19,7 @@
 
 # production
 /build
+/dist/
 
 # misc
 .DS_Store
@@ -41,8 +42,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# CSV files
-*.csv
+# Zip files
+/uploads/*.zip
+/public/temp/*.zip
+/public/temp/processed_images_*.zip
 
 # Image files
 *.jpg
@@ -52,15 +55,11 @@ next-env.d.ts
 *.bmp
 *.tiff
 *.webp
-
-# build output
-/dist/
-
-# Processed files directory
-/processed/
+/public/images/
 /public/processed/
+/WriteDurectiry/
 
-# Zip files
-/uploads/*.zip
-/public/temp/*.zip
-/public/temp/processed_images_*.zip
+# Build output
+/.next/
+/dist/
+/build/
