@@ -1,4 +1,11 @@
 {
   "version": 2,
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "buildCommand": "next build",
+  "outputDirectory": ".next",
+  "env": {
+    "UPLOAD_DIR": "./public/uploads",
+    "PROCESSED_DIR": "./public/processed",
+    "NODE_ENV": "production"
+  }
 }

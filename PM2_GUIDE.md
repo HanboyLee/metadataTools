@@ -1,182 +1,221 @@
-# PM2 使用指南
+# PM2 部署指南
 
-## 簡介
-PM2 是一個強大的 Node.js 應用程序進程管理器，它可以幫助你管理和保持應用程序 24/7 運行。本指南將介紹如何使用 PM2 來部署和管理我們的圖片元數據工具。
+本指南說明如何使用 PM2 進程管理器部署圖片元數據工具。
 
-## 安裝
+## 前置要求
+
+- Node.js 18.x 或更高版本
+- 全局安裝 PM2 (`npm install -g pm2`)
+- Git
+- OpenAI API 密鑰
+
+## 安裝步驟
+
+1. 克隆倉庫：
 ```bash
-# 全局安裝 PM2
-npm install -g pm2
+git clone [repository-url]
+cd image-metadata-tool
 ```
 
-## 基本命令
-
-### 啟動應用
+2. 安裝依賴：
 ```bash
-# 使用配置文件啟動
-pm2 start ecosystem.config.js
-
-# 直接啟動（不推薦）
-pm2 start npm --name "metadata-tool" -- start
+npm install
 ```
 
-### 查看應用狀態
-```bash
-# 查看所有應用狀態
-pm2 list
-
-# 查看詳細信息
-pm2 show metadata-tool
-
-# 查看日誌
-pm2 logs metadata-tool
+3. 創建環境文件：
+在根目錄創建 `.env.production` 文件：
+```env
+NEXT_PUBLIC_OPENAI_API_KEY=你的api密鑰
+UPLOAD_DIR=./public/uploads
+PROCESSED_DIR=./public/processed
+NODE_ENV=production
 ```
 
-### 管理應用
+4. 構建應用：
 ```bash
-# 重啟應用
-pm2 restart metadata-tool
-
-# 停止應用
-pm2 stop metadata-tool
-
-# 刪除應用
-pm2 delete metadata-tool
-
-# 重載應用（零停機重啟）
-pm2 reload metadata-tool
+npm run build
 ```
 
-## 配置文件說明
-我們的 `ecosystem.config.js` 配置如下：
+## PM2 配置
+
+項目包含一個 `ecosystem.config.js` 文件，配置如下：
 
 ```javascript
 module.exports = {
-  apps: [{
-    name: 'metadata-tool',
-    script: 'npm',
-    args: 'start',
-    env: {
-      NODE_ENV: 'production',
-      UPLOAD_DIR: './public/uploads',
-      PROCESSED_DIR: './public/processed'
-    },
-    instances: 1,
-    autorestart: true,
-    watch: false,
-    max_memory_restart: '1G'
-  }]
+  apps: [
+    {
+      name: 'image-metadata-tool',
+      script: 'npm',
+      args: 'start',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 8080
+      },
+      watch: false,
+      instances: 1,
+      exec_mode: 'fork'
+    }
+  ]
 }
 ```
 
-### 配置參數說明
-- `name`: 應用名稱
-- `script`: 啟動腳本
-- `args`: 腳本參數
-- `env`: 環境變量
-- `instances`: 實例數量
-- `autorestart`: 是否自動重啟
-- `watch`: 是否監視文件變化
-- `max_memory_restart`: 內存限制
+## 部署命令
 
-## 監控和維護
-
-### 監控儀表板
+1. 啟動應用：
 ```bash
-# 啟動 Web 介面
-pm2 plus
+pm2 start ecosystem.config.js
 ```
 
-### 日誌管理
-```bash
-# 查看實時日誌
-pm2 logs
-
-# 查看特定應用日誌
-pm2 logs metadata-tool
-
-# 清空日誌
-pm2 flush
-```
-
-### 自動啟動
-```bash
-# 生成啟動腳本
-pm2 startup
-
-# 保存當前應用列表
-pm2 save
-```
-
-## 常見問題處理
-
-### 1. 應用崩潰
-檢查日誌文件：
-```bash
-pm2 logs metadata-tool --lines 100
-```
-
-### 2. 內存洩漏
-監控內存使用：
+2. 監控應用：
 ```bash
 pm2 monit
 ```
 
-### 3. 性能問題
-使用內置分析工具：
+3. 查看日誌：
 ```bash
-pm2 reload metadata-tool --profile
+pm2 logs image-metadata-tool
 ```
 
-## 最佳實踐
+4. 停止應用：
+```bash
+pm2 stop image-metadata-tool
+```
 
-1. **總是使用配置文件**
-   - 使用 `ecosystem.config.js` 而不是命令行參數
-   - 將所有配置集中管理
+5. 重啟應用：
+```bash
+pm2 restart image-metadata-tool
+```
 
-2. **正確設置環境變量**
-   - 使用 `.env` 文件管理敏感信息
-   - 在配置文件中設置常用環境變量
+## 目錄結構
 
-3. **日誌管理**
-   - 定期清理日誌
-   - 設置日誌輪轉
-   - 監控錯誤日誌
+確保以下目錄存在並具有適當的權限：
+```
+public/
+├── uploads/
+├── processed/
+├── temp/
+└── images/
+```
 
-4. **監控**
-   - 定期檢查應用狀態
-   - 設置自動重啟閾值
-   - 使用 PM2 Plus 進行高級監控
+如果目錄不存在，創建它們：
+```bash
+mkdir -p public/{uploads,processed,temp,images}
+```
+
+## 監控
+
+PM2 提供多種監控選項：
+
+1. 基於網頁的監控：
+```bash
+pm2 plus
+```
+
+2. 基於終端的監控：
+```bash
+pm2 monit
+```
+
+3. 狀態檢查：
+```bash
+pm2 status
+```
+
+## 日誌管理
+
+1. 查看日誌：
+```bash
+pm2 logs
+```
+
+2. 清除日誌：
+```bash
+pm2 flush
+```
+
+3. 查看特定應用日誌：
+```bash
+pm2 logs image-metadata-tool
+```
+
+## 啟動腳本
+
+確保服務器重啟後應用自動啟動：
+
+```bash
+pm2 startup
+pm2 save
+```
+
+## 故障排除
+
+1. 如果應用無法啟動：
+   - 檢查日誌：`pm2 logs image-metadata-tool`
+   - 驗證環境變量
+   - 檢查端口可用性
+   - 驗證文件權限
+
+2. 內存問題：
+   - 監控內存使用：`pm2 monit`
+   - 考慮在 ecosystem.config.js 中增加 Node.js 內存限制
+
+3. 進程崩潰：
+   - 檢查錯誤日誌
+   - 驗證 OpenAI API 密鑰
+   - 檢查上傳目錄的磁盤空間
+
+## 安全注意事項
+
+1. 文件權限：
+```bash
+chmod 755 public/{uploads,processed,temp,images}
+```
+
+2. 環境變量：
+- 使用 PM2 環境文件
+- 保護 .env.production 文件
+
+3. 網絡安全：
+- 配置防火牆規則
+- 在生產環境使用 HTTPS
+- 設置速率限制
+
+## 備份策略
+
+1. 定期備份：
+   - 環境文件
+   - 上傳的圖片
+   - 處理後的數據
+   - PM2 配置
+
+2. 自動備份腳本示例：
+```bash
+#!/bin/bash
+backup_dir="/path/to/backups/$(date +%Y%m%d)"
+mkdir -p "$backup_dir"
+cp .env.production "$backup_dir/"
+cp ecosystem.config.js "$backup_dir/"
+tar -czf "$backup_dir/public.tar.gz" public/
+```
 
 ## 更新和維護
 
-### 更新 PM2
+1. 更新應用：
 ```bash
-# 更新 PM2
-npm install pm2@latest -g
+git pull
+npm install
+npm run build
+pm2 restart image-metadata-tool
+```
 
-# 更新內存快照
+2. 更新 PM2：
+```bash
+npm install pm2 -g
 pm2 update
 ```
 
-### 備份
-```bash
-# 保存進程列表
-pm2 save
-
-# 備份配置文件
-cp ecosystem.config.js ecosystem.config.backup.js
-```
-
-## 安全建議
-
-1. 避免使用 root 用戶運行 PM2
-2. 正確設置文件權限
-3. 使用環境變量存儲敏感信息
-4. 定期更新 PM2 和依賴包
-
 ## 相關資源
 
-- [PM2 官方文檔](https://pm2.keymetrics.io/)
+- [PM2 官方文檔](https://pm2.keymetrics.io/docs/usage/quick-start/)
 - [PM2 GitHub](https://github.com/Unitech/pm2)
 - [PM2 Plus 監控](https://app.pm2.io/)
