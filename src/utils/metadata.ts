@@ -1,12 +1,11 @@
+import { ExifTool, Tags } from 'exiftool-vendored';
+import { parse } from 'csv-parse/sync';
 import { promises as fs } from 'fs';
-import path from 'path';
-import { exiftool, Tags } from 'exiftool-vendored';
+import { join } from 'path';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 
-// Define XMPLangAlt type
-type XMPLangAlt = {
-  'x-default': string;
-  [key: string]: string;
-};
+const execAsync = promisify(exec);
 
 interface MetadataInput {
   title: string;
@@ -14,106 +13,158 @@ interface MetadataInput {
   keywords: string;
 }
 
-// 定義我們需要的標籤類型
-interface MetadataTags extends Tags {
-  Headline?: string;
-  ObjectName?: string;
-  Caption?: string;
-  Keywords?: string[];
-  'XMP-dc:Title'?: any;
-  'XMP-dc:Description'?: any;
-  'XMP-dc:Subject'?: string[];
-  'EXIF:DocumentName'?: string;
-  'EXIF:ImageDescription'?: string;
+async function runExifTool(args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const escapedArgs = args.map(arg => {
+      if (arg.includes('=')) {
+        const [tag, ...valueParts] = arg.split('=');
+        const value = valueParts.join('=');
+        return `${tag}="${value}"`;
+      } else if (arg.includes('/') && arg.includes(' ')) {
+        return `"${arg}"`;
+      }
+      return arg;
+    });
+    
+    const command = `exiftool ${escapedArgs.join(' ')}`;
+    console.log('Running ExifTool command:', command);
+    
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        console.error('ExifTool error:', error);
+        reject(error);
+        return;
+      }
+      if (stderr) {
+        console.warn('ExifTool stderr:', stderr);
+      }
+      resolve(stdout);
+    });
+  });
 }
 
 export async function processMetadataFile(file: File, metadata: MetadataInput): Promise<string> {
   try {
-    console.log('Processing file:', file.name);
-    console.log('Received metadata:', JSON.stringify(metadata, null, 2));
+    console.log('Starting metadata processing...');
+    console.log('File:', file.name);
+    console.log('Metadata:', metadata);
 
-    // Get the directory paths
-    const originalImagesDir = path.join(process.cwd(), 'public', 'images');
-    const processedImagesDir = path.join(process.cwd(), 'public', 'processed');
-    
-    // Ensure processed directory exists
+    const originalImagesDir = join(process.cwd(), 'public', 'images');
+    const processedImagesDir = join(process.cwd(), 'public', 'processed');
+
+    // Ensure directories exist
     await fs.mkdir(processedImagesDir, { recursive: true });
 
-    const originalImagePath = path.join(originalImagesDir, file.name);
-    const processedImagePath = path.join(processedImagesDir, file.name);
+    const originalImagePath = join(originalImagesDir, file.name);
+    const processedImagePath = join(processedImagesDir, file.name);
 
-    // Check if original image exists
+    // Verify source file exists
     try {
       await fs.access(originalImagePath);
-      console.log('Found original image at:', originalImagePath);
     } catch (error) {
-      console.error('Original image not found:', originalImagePath);
       throw new Error(`Original image not found: ${file.name}`);
     }
 
-    // Copy the original image to processed directory
-    await fs.copyFile(originalImagePath, processedImagePath);
-    console.log('Copied image to:', processedImagePath);
-
     // Process keywords
-    const keywords = metadata.keywords
+    const keywordsList = metadata.keywords
       .split(/[,;]/)
       .map(k => k.trim())
       .filter(Boolean);
 
-    // Prepare metadata using correct IPTC tags
-    const tags: Partial<MetadataTags> = {
-      // IPTC Core
-      Headline: metadata.title,
-      ObjectName: metadata.title,
-      Caption: metadata.description,
-      Keywords: keywords,
-      
-      // XMP Dublin Core
-      'XMP-dc:Title': metadata.title,
-      'XMP-dc:Description': metadata.description,
-      'XMP-dc:Subject': keywords,
-
-      // EXIF
-      'EXIF:DocumentName': metadata.title,
-      'EXIF:ImageDescription': metadata.description,
-    };
-
-    // Write metadata to the processed image
-    console.log('Writing metadata to:', processedImagePath);
-    console.log('Metadata to write:', tags);
-    
-    await exiftool.write(processedImagePath, tags, [
+    // Clean metadata
+    const cleanArgs = [
+      '-all=',
+      '-tagsfromfile', '@',
+      '-orientation',
       '-overwrite_original',
-      '-codedcharacterset=utf8',
-      '-charset', 
-      'iptc=utf8',
-      '-P',  // Preserve file modification date/time
-      '-m'   // Ignore minor errors
-    ]);
+      originalImagePath
+    ];
 
-    // Verify metadata
-    console.log('Verifying metadata...');
-    const verifyData = await exiftool.read(processedImagePath) as MetadataTags;
-    console.log('Verification result:', JSON.stringify(verifyData, null, 2));
+    try {
+      await runExifTool(cleanArgs);
+    } catch (error) {
+      throw new Error(`Failed to clean metadata: ${error}`);
+    }
 
-    // Log specific fields for verification
-    console.log('Verifying written metadata:');
-    console.log('IPTC Title (ObjectName):', verifyData.ObjectName);
-    console.log('IPTC Headline:', verifyData.Headline);
-    console.log('IPTC Description (Caption):', verifyData.Caption);
-    console.log('IPTC Keywords:', verifyData.Keywords);
-    console.log('XMP Title:', verifyData['XMP-dc:Title']);
-    console.log('XMP Description:', verifyData['XMP-dc:Description']);
-    console.log('XMP Subject:', verifyData['XMP-dc:Subject']);
-    console.log('EXIF DocumentName:', verifyData['EXIF:DocumentName']);
-    console.log('EXIF ImageDescription:', verifyData['EXIF:ImageDescription']);
+    // Write new metadata
+    const writeArgs = [
+      '-overwrite_original',
+      '-codedcharacterset=UTF8',
+      '-charset', 'iptc=UTF8',
+      '-m',
+      `-IPTC:ObjectName=${metadata.title}`,
+      `-IPTC:Caption-Abstract=${metadata.description}`,
+      ...keywordsList.map(k => `-IPTC:Keywords=${k}`),
+      `-XMP-dc:Title=${metadata.title}`,
+      `-XMP-dc:Description=${metadata.description}`,
+      ...keywordsList.map(k => `-XMP-dc:Subject=${k}`),
+      `-IFD0:ImageDescription=${metadata.description}`,
+      `-IFD0:DocumentName=${metadata.title}`,
+      originalImagePath
+    ];
 
-    // Return the relative path for download URL
-    return path.join('/processed', file.name);
+    try {
+      await runExifTool(writeArgs);
+    } catch (error) {
+      throw new Error(`Failed to write metadata: ${error}`);
+    }
 
+    // Copy to processed directory
+    await fs.copyFile(originalImagePath, processedImagePath);
+
+    return join('/processed', file.name);
   } catch (error) {
     console.error('Error processing metadata:', error);
     throw error;
   }
+}
+
+export async function verifyMetadata(
+  imagePath: string,
+  expectedMetadata: MetadataInput,
+  exiftool: ExifTool
+): Promise<{ success: boolean; errors: string[] }> {
+  const errors: string[] = [];
+  
+  try {
+    const readResult = await exiftool.read(imagePath);
+
+    // Verify IPTC metadata
+    if (readResult['IPTC:ObjectName'] !== expectedMetadata.title) {
+      errors.push('IPTC:ObjectName mismatch');
+    }
+    if (readResult['IPTC:Caption-Abstract'] !== expectedMetadata.description) {
+      errors.push('IPTC:Caption-Abstract mismatch');
+    }
+
+    const expectedKeywords = expectedMetadata.keywords.split(',').map(k => k.trim());
+    if (!Array.isArray(readResult['IPTC:Keywords']) || 
+        !expectedKeywords.every(k => readResult['IPTC:Keywords'].includes(k))) {
+      errors.push('IPTC:Keywords mismatch');
+    }
+
+    // Verify XMP metadata
+    const xmpTitle = readResult['XMP-dc:Title'];
+    if (!xmpTitle || xmpTitle['x-default'] !== expectedMetadata.title) {
+      errors.push('XMP-dc:Title mismatch');
+    }
+
+    const xmpDescription = readResult['XMP-dc:Description'];
+    if (!xmpDescription || xmpDescription['x-default'] !== expectedMetadata.description) {
+      errors.push('XMP-dc:Description mismatch');
+    }
+
+    if (!Array.isArray(readResult['XMP-dc:Subject']) || 
+        !expectedKeywords.every(k => readResult['XMP-dc:Subject'].includes(k))) {
+      errors.push('XMP-dc:Subject mismatch');
+    }
+
+  } catch (error) {
+    errors.push(`Failed to verify metadata: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+
+  return {
+    success: errors.length === 0,
+    errors
+  };
 }

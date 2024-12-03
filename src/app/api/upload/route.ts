@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parse } from 'csv-parse/sync';
-import { processMetadataFile } from '@/utils/metadata';
+import { processMetadataFile as processMetadata } from '@/utils/metadata';
 import { promises as fs } from 'fs';
 import path from 'path';
 import JSZip from 'jszip';
@@ -247,7 +247,7 @@ export async function POST(request: NextRequest) {
           .filter(Boolean)
           .join(', ');  // Join with comma and space
         
-        await processMetadataFile(imageFile, {
+        await processMetadata(imageFile, {
           title: validatedRecord.title.trim(),
           description: validatedRecord.description.trim(),
           keywords: keywords
