@@ -9,6 +9,7 @@ import { getDirectories } from './directories';
 const CLEANUP_INTERVAL_MS = parseInt(process.env.CLEANUP_INTERVAL || '3600000'); // 1小時
 const MAX_STORAGE_SIZE = parseInt(process.env.MAX_STORAGE_SIZE || '104857600'); // 100MB
 const FILE_MAX_AGE = parseInt(process.env.FILE_MAX_AGE || '86400000'); // 24小時
+const TEMP_FILE_MAX_AGE = parseInt(process.env.TEMP_FILE_MAX_AGE || '3600000'); // 1小時
 
 interface FileMetadata {
   createdAt: number;
@@ -94,12 +95,12 @@ async function performInitialCleanup(): Promise<void> {
 
     // 清理所有目錄
     const directories = [
-      { path: dirs.TEMP_DIR, type: 'temp' as const },
-      { path: dirs.PROCESSED_DIR, type: 'processed' as const },
-      { path: dirs.IMAGES_DIR, type: 'image' as const }
+      { path: dirs.TEMP_DIR, type: 'temp' as const, maxAge: TEMP_FILE_MAX_AGE },
+      { path: dirs.PROCESSED_DIR, type: 'processed' as const, maxAge: FILE_MAX_AGE },
+      { path: dirs.IMAGES_DIR, type: 'image' as const, maxAge: FILE_MAX_AGE }
     ];
 
-    for (const { path: dir, type } of directories) {
+    for (const { path: dir, type, maxAge } of directories) {
       try {
         const files = await fs.readdir(dir);
         console.log(`Checking ${type} directory: ${dir} (${files.length} files)`);
@@ -115,7 +116,7 @@ async function performInitialCleanup(): Promise<void> {
               const metadata: FileMetadata = JSON.parse(metaContent);
               
               const age = Date.now() - metadata.createdAt;
-              const isExpired = age > FILE_MAX_AGE;
+              const isExpired = age > maxAge;
               const isInUse = fileUsageMap.has(filePath);
               
               if (isExpired && !isInUse) {
@@ -126,7 +127,7 @@ async function performInitialCleanup(): Promise<void> {
             } catch {
               // 如果沒有元數據文件或讀取失敗，檢查文件年齡
               const age = Date.now() - stats.birthtimeMs;
-              if (age > FILE_MAX_AGE) {
+              if (age > maxAge) {
                 await fs.unlink(filePath);
                 console.log(`Cleaned up old ${type} file without metadata: ${filePath} (age: ${age}ms)`);
               }

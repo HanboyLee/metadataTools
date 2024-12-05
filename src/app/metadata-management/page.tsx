@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Box,
   Button,
@@ -94,6 +94,21 @@ export default function MetadataManagement() {
     try {
       setState((prev) => ({ ...prev, processing: true, error: null }));
 
+      // 清理 processed 目錄
+      const resetResponse = await fetch("/api/reset", {
+        method: "POST",
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          directories: ['processed'] 
+        })
+      });
+
+      if (!resetResponse.ok) {
+        throw new Error("Failed to reset processed directory");
+      }
+
       const formData = new FormData();
       formData.append("file", state.csvFile);
       state.selectedFiles.forEach((file) => {
@@ -112,6 +127,21 @@ export default function MetadataManagement() {
       }
 
       const result = await response.json();
+
+      // 處理成功後，清理已處理的原始圖片
+      const cleanupResponse = await fetch("/api/reset", {
+        method: "POST",
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          directories: ['images'] 
+        })
+      });
+
+      if (!cleanupResponse.ok) {
+        console.warn("Failed to cleanup original images");
+      }
 
       setState((prev) => ({
         ...prev,
@@ -166,10 +196,36 @@ export default function MetadataManagement() {
     }
   };
 
+  // 頁面加載時清理未完成的處理
+  useEffect(() => {
+    const cleanupOnLoad = async () => {
+      try {
+        // 清理 processed 和 temp 目錄
+        const response = await fetch("/api/reset", {
+          method: "POST",
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ 
+            directories: ['processed', 'temp'] 
+          })
+        });
+
+        if (!response.ok) {
+          console.warn("Failed to cleanup directories on page load");
+        }
+      } catch (error) {
+        console.error("Error cleaning up directories on page load:", error);
+      }
+    };
+
+    cleanupOnLoad();
+  }, []);
+
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <Typography variant="h4" component="h1" gutterBottom>
-     胡豆豆的專屬吃飯工具
+     豆豆的專屬吃飯工具
       </Typography>
 
       <Paper component="form" onSubmit={handleSubmit} sx={{ p: 3, mt: 3 }}>

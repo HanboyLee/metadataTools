@@ -5,6 +5,10 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { getDirectories, ensureDirectories } from '@/utils/directories';
 
+interface ResetRequest {
+  directories?: ('temp' | 'processed' | 'images')[];
+}
+
 async function clearDirectory(dir: string): Promise<void> {
   try {
     const files = await fs.readdir(dir);
@@ -35,17 +39,28 @@ export async function POST(request: NextRequest) {
     // Get directory paths
     const dirs = await getDirectories();
     
-    // 清除所有目錄
-    await Promise.all([
-      clearDirectory(dirs.TEMP_DIR),
-      clearDirectory(dirs.PROCESSED_DIR),
-      clearDirectory(dirs.IMAGES_DIR)
-    ]);
+    // 獲取要清理的目錄列表
+    const body: ResetRequest = await request.json().catch(() => ({}));
+    const directoriesToClear = body.directories || ['temp', 'processed', 'images'];
+    
+    // 建立目錄映射
+    const dirMap = {
+      'temp': dirs.TEMP_DIR,
+      'processed': dirs.PROCESSED_DIR,
+      'images': dirs.IMAGES_DIR
+    };
+    
+    // 只清理指定的目錄
+    await Promise.all(
+      directoriesToClear.map(dir => clearDirectory(dirMap[dir]))
+    );
 
     // 重新創建目錄
     await ensureDirectories();
 
-    return NextResponse.json({ message: 'All directories cleared successfully' });
+    return NextResponse.json({ 
+      message: `Directories cleared successfully: ${directoriesToClear.join(', ')}` 
+    });
   } catch (error) {
     console.error('Failed to reset directories:', error);
     return NextResponse.json(

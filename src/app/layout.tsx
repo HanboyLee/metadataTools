@@ -6,6 +6,7 @@ import Navigation from "@/components/Navigation";
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import theme from '@/theme';
+import { CleanupInitializer } from '@/components/CleanupInitializer';
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -28,6 +29,7 @@ export default function RootLayout({
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <ThemeProvider theme={theme}>
           <CssBaseline />
+          <CleanupInitializer />
           <Navigation />
           {children}
         </ThemeProvider>
