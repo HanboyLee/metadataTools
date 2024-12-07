@@ -1,5 +1,3 @@
-# Image Metadata Tool - Requirements Specification
-
 ## 1. Project Overview
 
 ### 1.1 Purpose
